@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"key-aws-exporter/internal/config"
 	"key-aws-exporter/internal/exporter"
@@ -21,6 +22,10 @@ type serverRunner interface {
 	Shutdown(context.Context) error
 }
 
+type validationRunner interface {
+	ValidateAll(ctx context.Context) *exporter.ValidationResults
+}
+
 func main() {
 	log := logrus.New()
 	log.SetLevel(logrus.InfoLevel)
@@ -32,10 +37,12 @@ func main() {
 		log.WithError(err).Fatal("Failed to load configuration")
 	}
 
-	server, _ := createServer(cfg, log)
+	server, manager := createServer(cfg, log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	startAutoValidation(ctx, manager, log, cfg.AutoValidateInterval)
 
 	if err := runServer(ctx, server, server.Addr, log); err != nil {
 		log.WithError(err).Fatal("Server error")
@@ -98,4 +105,39 @@ func runServer(ctx context.Context, server serverRunner, addr string, log *logru
 		}
 		return err
 	}
+}
+
+func startAutoValidation(ctx context.Context, manager validationRunner, log *logrus.Logger, interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+
+	go func() {
+		runValidation := func() {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			results := manager.ValidateAll(ctx)
+			for endpoint, result := range results.Results {
+				exporter.RecordResult(log, endpoint, result)
+			}
+		}
+
+		runValidation()
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runValidation()
+			}
+		}
+	}()
 }

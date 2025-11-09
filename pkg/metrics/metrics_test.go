@@ -14,6 +14,7 @@ func resetAll() {
 	KeysValid.Reset()
 	LastValidationTimestamp.Reset()
 	ResponseTime.Reset()
+	EndpointConfigured.Reset()
 }
 
 func TestRecordValidationAttempt(t *testing.T) {
@@ -68,5 +69,36 @@ func TestSetLastValidationTimeAndResponse(t *testing.T) {
 	metricsCount := testutil.CollectAndCount(ResponseTime)
 	if metricsCount != 1 {
 		t.Fatalf("expected histogram to have 1 metric sample, got %d", metricsCount)
+	}
+}
+
+func TestRegisterEndpointSeedsMetrics(t *testing.T) {
+	resetAll()
+
+	RegisterEndpoint("bucket-a")
+
+	configGauge := testutil.ToFloat64(EndpointConfigured.WithLabelValues("bucket-a"))
+	if configGauge != 1 {
+		t.Fatalf("expected configured gauge 1, got %v", configGauge)
+	}
+
+	keys := testutil.ToFloat64(KeysValid.WithLabelValues("bucket-a"))
+	if keys != 0 {
+		t.Fatalf("expected keys gauge 0, got %v", keys)
+	}
+
+	lastValidation := testutil.ToFloat64(LastValidationTimestamp.WithLabelValues("bucket-a"))
+	if lastValidation != 0 {
+		t.Fatalf("expected last validation timestamp 0, got %v", lastValidation)
+	}
+
+	if testutil.ToFloat64(ValidationAttempts.WithLabelValues("bucket-a", "success")) != 0 {
+		t.Fatalf("expected success counter to remain 0")
+	}
+	if testutil.ToFloat64(ValidationAttempts.WithLabelValues("bucket-a", "failure")) != 0 {
+		t.Fatalf("expected failure counter to remain 0")
+	}
+	if testutil.ToFloat64(ValidationFailures.WithLabelValues("bucket-a", "validation_failed")) != 0 {
+		t.Fatalf("expected failure detail counter 0")
 	}
 }

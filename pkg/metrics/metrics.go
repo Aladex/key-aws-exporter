@@ -70,6 +70,15 @@ var (
 		},
 		[]string{"bucket", "operation"},
 	)
+
+	// EndpointConfigured marks configured endpoints so users can discover them via metrics
+	EndpointConfigured = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "s3_endpoint_configured",
+			Help: "Configured S3 endpoints (always 1 for configured endpoints)",
+		},
+		[]string{"bucket"},
+	)
 )
 
 // RecordValidationAttempt records a validation attempt in metrics
@@ -101,4 +110,15 @@ func SetLastValidationTime(bucket string, timestamp float64) {
 // RecordResponseTime records the response time of an operation
 func RecordResponseTime(bucket, operation string, milliseconds float64) {
 	ResponseTime.WithLabelValues(bucket, operation).Observe(milliseconds)
+}
+
+// RegisterEndpoint seeds metrics for a bucket so they are visible before validation occurs
+func RegisterEndpoint(bucket string) {
+	EndpointConfigured.WithLabelValues(bucket).Set(1)
+	KeysValid.WithLabelValues(bucket).Set(0)
+	LastValidationTimestamp.WithLabelValues(bucket).Set(0)
+	ValidationAttempts.WithLabelValues(bucket, "success").Add(0)
+	ValidationAttempts.WithLabelValues(bucket, "failure").Add(0)
+	ValidationSuccess.WithLabelValues(bucket).Add(0)
+	ValidationFailures.WithLabelValues(bucket, "validation_failed").Add(0)
 }

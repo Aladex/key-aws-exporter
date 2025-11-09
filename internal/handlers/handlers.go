@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"key-aws-exporter/internal/exporter"
-	"key-aws-exporter/pkg/metrics"
 	"key-aws-exporter/pkg/s3"
 
 	"github.com/sirupsen/logrus"
@@ -95,25 +94,12 @@ func NewValidateAllHandler(manager Validator, log *logrus.Logger) http.HandlerFu
 				ResponseTimeMs: result.ResponseTimeMs,
 			}
 
-			// Record metrics
-			metrics.RecordValidationAttempt(endpointName, result.IsValid)
-			metrics.SetLastValidationTime(endpointName, float64(result.CheckedAt.Unix()))
-			metrics.RecordResponseTime(endpointName, "ListObjectsV2", float64(result.ResponseTimeMs))
+			exporter.RecordResult(log, endpointName, result)
 
 			if result.IsValid {
 				response.Summary.Successful++
-				metrics.RecordValidationSuccess(endpointName)
-				log.WithFields(logrus.Fields{
-					"endpoint":      endpointName,
-					"response_time": result.ResponseTimeMs,
-				}).Info("S3 key validation successful")
 			} else {
 				response.Summary.Failed++
-				metrics.RecordValidationFailure(endpointName, "validation_failed")
-				log.WithFields(logrus.Fields{
-					"endpoint": endpointName,
-					"message":  result.Message,
-				}).Warn("S3 key validation failed")
 			}
 		}
 
@@ -156,24 +142,7 @@ func NewValidateEndpointHandler(manager Validator, log *logrus.Logger) http.Hand
 		ctx := context.Background()
 		result := manager.ValidateEndpoint(ctx, endpointName)
 
-		// Record metrics
-		metrics.RecordValidationAttempt(endpointName, result.IsValid)
-		metrics.SetLastValidationTime(endpointName, float64(result.CheckedAt.Unix()))
-		metrics.RecordResponseTime(endpointName, "ListObjectsV2", float64(result.ResponseTimeMs))
-
-		if result.IsValid {
-			metrics.RecordValidationSuccess(endpointName)
-			log.WithFields(logrus.Fields{
-				"endpoint":      endpointName,
-				"response_time": result.ResponseTimeMs,
-			}).Info("S3 key validation successful")
-		} else {
-			metrics.RecordValidationFailure(endpointName, "validation_failed")
-			log.WithFields(logrus.Fields{
-				"endpoint": endpointName,
-				"message":  result.Message,
-			}).Warn("S3 key validation failed")
-		}
+		exporter.RecordResult(log, endpointName, result)
 
 		response := ValidationResponse{
 			IsValid:        result.IsValid,

@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	DefaultPort              = 8080
-	DefaultS3Region          = "us-east-1"
-	ShutdownTimeout          = 30 * time.Second
-	DefaultValidationTimeout = 10 * time.Second
+	DefaultPort                 = 8080
+	DefaultS3Region             = "us-east-1"
+	ShutdownTimeout             = 30 * time.Second
+	DefaultValidationTimeout    = 10 * time.Second
+	DefaultAutoValidateInterval = 0
 )
 
 // S3EndpointConfig represents configuration for a single S3 endpoint
@@ -29,10 +30,11 @@ type S3EndpointConfig struct {
 }
 
 type Config struct {
-	Port              int
-	Endpoints         []S3EndpointConfig
-	ValidationTimeout time.Duration
-	MetricsPath       string
+	Port                 int
+	Endpoints            []S3EndpointConfig
+	ValidationTimeout    time.Duration
+	MetricsPath          string
+	AutoValidateInterval time.Duration
 }
 
 // LoadConfig loads configuration from environment variables
@@ -43,9 +45,10 @@ func LoadConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Port:              getEnvInt("EXPORTER_PORT", DefaultPort),
-		ValidationTimeout: getEnvDuration("VALIDATION_TIMEOUT", DefaultValidationTimeout),
-		MetricsPath:       "/metrics",
+		Port:                 getEnvInt("EXPORTER_PORT", DefaultPort),
+		ValidationTimeout:    getEnvDuration("VALIDATION_TIMEOUT", DefaultValidationTimeout),
+		MetricsPath:          "/metrics",
+		AutoValidateInterval: getEnvDuration("AUTO_VALIDATE_INTERVAL", DefaultAutoValidateInterval),
 	}
 
 	// Try to load multiple endpoints from JSON config first

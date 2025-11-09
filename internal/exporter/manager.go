@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"key-aws-exporter/internal/config"
+	"key-aws-exporter/pkg/metrics"
 	"key-aws-exporter/pkg/s3"
 
 	"github.com/sirupsen/logrus"
@@ -49,6 +50,7 @@ func NewValidatorManager(cfg *config.Config, log *logrus.Logger) *ValidatorManag
 			endpointCfg.SecretKey,
 		)
 		vm.validators[endpointCfg.Name] = validator
+		metrics.RegisterEndpoint(endpointCfg.Name)
 
 		log.WithFields(logrus.Fields{
 			"endpoint_name": endpointCfg.Name,
@@ -133,4 +135,29 @@ func (vm *ValidatorManager) GetEndpointCount() int {
 	vm.mu.RLock()
 	defer vm.mu.RUnlock()
 	return len(vm.validators)
+}
+
+// RecordResult updates metrics and logs for a validation outcome
+func RecordResult(log *logrus.Logger, endpointName string, result *s3.ValidationResult) {
+	metrics.RecordValidationAttempt(endpointName, result.IsValid)
+	metrics.SetLastValidationTime(endpointName, float64(result.CheckedAt.Unix()))
+	metrics.RecordResponseTime(endpointName, "ListObjectsV2", float64(result.ResponseTimeMs))
+
+	if result.IsValid {
+		metrics.RecordValidationSuccess(endpointName)
+		if log != nil {
+			log.WithFields(logrus.Fields{
+				"endpoint":      endpointName,
+				"response_time": result.ResponseTimeMs,
+			}).Info("S3 key validation successful")
+		}
+	} else {
+		metrics.RecordValidationFailure(endpointName, "validation_failed")
+		if log != nil {
+			log.WithFields(logrus.Fields{
+				"endpoint": endpointName,
+				"message":  result.Message,
+			}).Warn("S3 key validation failed")
+		}
+	}
 }

@@ -11,6 +11,7 @@ func TestLoadConfig_MultipleEndpointsJSON(t *testing.T) {
 	t.Setenv("S3_ENDPOINTS_JSON", `[{"name":"primary","endpoint":"https://s3.example.com","region":"eu-west-1","bucket":"bucket-a","access_key":"AKIA","secret_key":"SECRET"},{"bucket":"bucket-b","access_key":"AKIA2","secret_key":"SECRET2"}]`)
 	t.Setenv("EXPORTER_PORT", "9090")
 	t.Setenv("VALIDATION_TIMEOUT", "5s")
+	t.Setenv("AUTO_VALIDATE_INTERVAL", "2m")
 	t.Setenv("S3_BUCKET", "")
 	t.Setenv("S3_ACCESS_KEY", "")
 	t.Setenv("S3_SECRET_KEY", "")
@@ -26,6 +27,10 @@ func TestLoadConfig_MultipleEndpointsJSON(t *testing.T) {
 
 	if cfg.ValidationTimeout != 5*time.Second {
 		t.Fatalf("expected validation timeout 5s, got %v", cfg.ValidationTimeout)
+	}
+
+	if cfg.AutoValidateInterval != 2*time.Minute {
+		t.Fatalf("expected auto interval 2m, got %v", cfg.AutoValidateInterval)
 	}
 
 	if len(cfg.Endpoints) != 2 {
@@ -73,6 +78,10 @@ func TestLoadConfig_LegacyConfig(t *testing.T) {
 
 	if endpoint.Region != "us-west-2" {
 		t.Fatalf("unexpected region: %s", endpoint.Region)
+	}
+
+	if cfg.AutoValidateInterval != 0 {
+		t.Fatalf("expected default auto interval 0, got %v", cfg.AutoValidateInterval)
 	}
 }
 
@@ -127,7 +136,7 @@ func TestLoadConfig_LoadsDotEnv(t *testing.T) {
 		os.Chdir(wd)
 	})
 
-	dotEnvContent := "S3_BUCKET=dotenv-bucket\nS3_ACCESS_KEY=KEY\nS3_SECRET_KEY=SECRET\n"
+	dotEnvContent := "S3_BUCKET=dotenv-bucket\nS3_ACCESS_KEY=KEY\nS3_SECRET_KEY=SECRET\nAUTO_VALIDATE_INTERVAL=15s\n"
 	if err := os.WriteFile(filepath.Join(tempDir, ".env"), []byte(dotEnvContent), 0o600); err != nil {
 		t.Fatalf("failed to write temp .env: %v", err)
 	}
@@ -155,5 +164,8 @@ func TestLoadConfig_LoadsDotEnv(t *testing.T) {
 	}
 	if endpoint.AccessKey != "KEY" || endpoint.SecretKey != "SECRET" {
 		t.Fatalf("expected credentials from .env")
+	}
+	if cfg.AutoValidateInterval != 15*time.Second {
+		t.Fatalf("expected auto interval from .env, got %v", cfg.AutoValidateInterval)
 	}
 }

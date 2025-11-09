@@ -69,6 +69,7 @@ export S3_REGION=us-east-1
 | `S3_ENDPOINT` | No | - | Custom S3 endpoint |
 | `EXPORTER_PORT` | No | 8080 | HTTP server port |
 | `VALIDATION_TIMEOUT` | No | 10s | Timeout for validation |
+| `AUTO_VALIDATE_INTERVAL` | No | 0s (disabled) | How often to run background validations automatically |
 
 ### 2. Multiple Endpoints (JSON Config)
 
@@ -103,6 +104,7 @@ export S3_ENDPOINTS_JSON='[
 ]'
 
 export EXPORTER_PORT=8080
+export AUTO_VALIDATE_INTERVAL=30s
 ./exporter
 ```
 

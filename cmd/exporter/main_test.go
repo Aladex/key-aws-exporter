@@ -5,10 +5,13 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"key-aws-exporter/internal/config"
+	"key-aws-exporter/internal/exporter"
+	"key-aws-exporter/pkg/s3"
 
 	"github.com/sirupsen/logrus"
 )
@@ -103,5 +106,64 @@ func TestRunServerPropagatesErrors(t *testing.T) {
 	err := runServer(context.Background(), stub, ":0", logrus.New())
 	if err == nil || !errors.Is(err, stub.listenErr) {
 		t.Fatalf("expected listen error, got %v", err)
+	}
+}
+
+type stubAutoValidator struct {
+	mu      sync.Mutex
+	calls   int
+	results *exporter.ValidationResults
+}
+
+func (s *stubAutoValidator) ValidateAll(ctx context.Context) *exporter.ValidationResults {
+	s.mu.Lock()
+	s.calls++
+	s.mu.Unlock()
+	return s.results
+}
+
+func (s *stubAutoValidator) callCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
+}
+
+func TestStartAutoValidationRunsPeriodically(t *testing.T) {
+	stub := &stubAutoValidator{
+		results: &exporter.ValidationResults{Results: map[string]*s3.ValidationResult{"bucket": {CheckedAt: time.Now()}}},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startAutoValidation(ctx, stub, logrus.New(), 20*time.Millisecond)
+
+	deadline := time.After(200 * time.Millisecond)
+	for stub.callCount() < 2 {
+		select {
+		case <-deadline:
+			cancel()
+			t.Fatalf("expected at least 2 auto validations, got %d", stub.callCount())
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	cancel()
+}
+
+func TestStartAutoValidationDisabled(t *testing.T) {
+	stub := &stubAutoValidator{
+		results: &exporter.ValidationResults{Results: map[string]*s3.ValidationResult{}},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startAutoValidation(ctx, stub, logrus.New(), 0)
+	startAutoValidation(ctx, stub, logrus.New(), -1)
+
+	time.Sleep(30 * time.Millisecond)
+
+	if stub.callCount() != 0 {
+		t.Fatalf("expected no auto validations when disabled, got %d", stub.callCount())
 	}
 }
