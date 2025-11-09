@@ -43,6 +43,9 @@ jobs:
           helm package "$CHART_DIR" --version "$VERSION" --app-version "$VERSION" --destination dist
 
       - name: Push chart to GHCR
+        env:
+          OWNER: ${{ github.repository_owner }}
         run: |
           VERSION="${{ steps.vars.outputs.version }}"
-          helm push "dist/key-aws-exporter-${VERSION}.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
+          OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          helm push "dist/key-aws-exporter-${VERSION}.tgz" oci://ghcr.io/${OWNER_LC}/charts
