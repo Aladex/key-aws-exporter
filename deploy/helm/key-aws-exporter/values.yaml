@@ -26,6 +26,16 @@ service:
   type: ClusterIP
   port: 8080
 
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: 30s
+  scrapeTimeout: ""
+  labels: {}
+  annotations: {}
+  metricRelabelings: []
+  relabelings: []
+
 resources:
   requests:
     cpu: 50m
