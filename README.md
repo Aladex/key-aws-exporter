@@ -315,19 +315,15 @@ A Helm chart ships in `deploy/helm/key-aws-exporter`. It supports inline env var
 ```bash
 helm install key-aws-exporter deploy/helm/key-aws-exporter \
   --namespace monitoring --create-namespace \
-  --set image.repository=ghcr.io/aladex/key-aws-exporter \
-  --set image.tag=<image-tag> \
   --set env.S3_ENDPOINTS_JSON='[...]'
 ```
 
-### Install from GHCR
+### Install from GHCR (OCI)
 
 ```bash
 helm registry login ghcr.io --username <user> --password <token>
 helm install key-aws-exporter oci://ghcr.io/aladex/charts/key-aws-exporter \
-  --version <chart-version> \
-  --set image.repository=ghcr.io/aladex/key-aws-exporter \
-  --set image.tag=<image-tag>
+  --version <chart-version>
 ```
 
 Key values: `env.*` (non-secret envs), `extraEnv` (list for complex values), `existingSecret` (reference to a Kubernetes secret with sensitive keys), `service.*`, `resources`, `affinity`, etc. See `values.yaml` for the full catalog.
