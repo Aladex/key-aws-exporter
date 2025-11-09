@@ -1,5 +1,9 @@
 # AWS S3 Key Exporter
 
+[![Docker Build](https://github.com/Aladex/key-aws-exporter/actions/workflows/docker-build.yml/badge.svg)](https://github.com/Aladex/key-aws-exporter/actions/workflows/docker-build.yml)
+[![Helm Publish](https://github.com/Aladex/key-aws-exporter/actions/workflows/helm-publish.yml/badge.svg)](https://github.com/Aladex/key-aws-exporter/actions/workflows/helm-publish.yml)
+[![Release](https://github.com/Aladex/key-aws-exporter/actions/workflows/release.yml/badge.svg)](https://github.com/Aladex/key-aws-exporter/actions/workflows/release.yml)
+
 A lightweight Prometheus exporter for validating **multiple AWS S3 credentials** and exposing metrics about key validity and S3 operations.
 
 ## Features
@@ -26,6 +30,8 @@ A lightweight Prometheus exporter for validating **multiple AWS S3 credentials**
 ├── pkg/
 │   ├── s3/                # S3 validation logic
 │   └── metrics/           # Prometheus metrics definitions
+├── deploy/helm/           # Kubernetes Helm chart
+├── .github/workflows/     # CI (Docker/Helm publishing)
 ├── go.mod                 # Go module definition
 └── README.md              # This file
 ```
@@ -284,6 +290,51 @@ docker run -e 'S3_ENDPOINTS_JSON=[{"name":"prod","bucket":"prod-bucket","access_
 ```bash
 docker-compose up -d
 ```
+
+## Docker Images via GitHub Actions
+
+`docker-build.yml` automates building and pushing container images to GHCR (`ghcr.io/aladex/key-aws-exporter`). It runs on pushes to `master`, tags prefixed with `v`, or when triggered manually. The workflow:
+
+- sets up QEMU/Buildx for multi-arch builds,
+- logs into GHCR with the repository `GITHUB_TOKEN`, and
+- publishes tags for the branch, git tag, and commit SHA.
+
+You can still build manually:
+
+```bash
+docker build -t ghcr.io/aladex/key-aws-exporter:dev .
+docker push ghcr.io/aladex/key-aws-exporter:dev
+```
+
+## Helm Chart (deploy/helm/key-aws-exporter)
+
+A Helm chart ships in `deploy/helm/key-aws-exporter`. It supports inline env vars, existing secrets, scaling settings, probes, and standard Kubernetes knobs. `.github/workflows/helm-publish.yml` packages/pushes the chart to `ghcr.io/aladex/charts` as an OCI artifact whenever you push a `v*` tag (or run the workflow manually).
+
+### Install from Source
+
+```bash
+helm install key-aws-exporter deploy/helm/key-aws-exporter \
+  --namespace monitoring --create-namespace \
+  --set image.repository=ghcr.io/aladex/key-aws-exporter \
+  --set image.tag=<image-tag> \
+  --set env.S3_ENDPOINTS_JSON='[...]'
+```
+
+### Install from GHCR
+
+```bash
+helm registry login ghcr.io --username <user> --password <token>
+helm install key-aws-exporter oci://ghcr.io/aladex/charts/key-aws-exporter \
+  --version <chart-version> \
+  --set image.repository=ghcr.io/aladex/key-aws-exporter \
+  --set image.tag=<image-tag>
+```
+
+Key values: `env.*` (non-secret envs), `extraEnv` (list for complex values), `existingSecret` (reference to a Kubernetes secret with sensitive keys), `service.*`, `resources`, `affinity`, etc. See `values.yaml` for the full catalog.
+
+## GitHub Releases
+
+The `release.yml` workflow runs on every `v*` tag, executes the full Go test suite, builds a Linux/amd64 binary, and uploads a tarball to the GitHub Releases page. Grab the latest binary at [github.com/Aladex/key-aws-exporter/releases](https://github.com/Aladex/key-aws-exporter/releases).
 
 ## Prometheus Integration
 

@@ -1,0 +1,18 @@
+apiVersion: v2
+name: key-aws-exporter
+description: Helm chart for deploying the Key AWS Exporter service to Kubernetes
+
+# This version is overwritten by CI when packaging (see helm-publish workflow)
+version: 0.1.0
+appVersion: "0.1.0"
+
+type: application
+
+keywords:
+  - aws
+  - prometheus
+  - exporter
+  - s3
+
+sources:
+  - https://github.com/Aladex/key-aws-exporter
