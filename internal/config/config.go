@@ -4,14 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const (
-	DefaultPort           = 8080
-	DefaultS3Region       = "us-east-1"
-	ShutdownTimeout       = 30 * time.Second
+	DefaultPort              = 8080
+	DefaultS3Region          = "us-east-1"
+	ShutdownTimeout          = 30 * time.Second
 	DefaultValidationTimeout = 10 * time.Second
 )
 
@@ -35,6 +38,10 @@ type Config struct {
 // LoadConfig loads configuration from environment variables
 // Supports both single endpoint (legacy) and multiple endpoints (JSON config)
 func LoadConfig() (*Config, error) {
+	if err := loadDotEnv(); err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		Port:              getEnvInt("EXPORTER_PORT", DefaultPort),
 		ValidationTimeout: getEnvDuration("VALIDATION_TIMEOUT", DefaultValidationTimeout),
@@ -96,6 +103,26 @@ func LoadConfig() (*Config, error) {
 	cfg.Endpoints = []S3EndpointConfig{singleEndpoint}
 
 	return cfg, nil
+}
+
+func loadDotEnv() error {
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	path := filepath.Join(wd, ".env")
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to stat .env file: %w", err)
+	}
+
+	if err := godotenv.Load(path); err != nil {
+		return fmt.Errorf("failed to load .env file: %w", err)
+	}
+	return nil
 }
 
 func getEnv(key, defaultValue string) string {

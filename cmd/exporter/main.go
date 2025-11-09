@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -15,6 +15,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
+
+type serverRunner interface {
+	ListenAndServe() error
+	Shutdown(context.Context) error
+}
 
 func main() {
 	log := logrus.New()
@@ -27,7 +32,17 @@ func main() {
 		log.WithError(err).Fatal("Failed to load configuration")
 	}
 
-	// Create validator manager for all endpoints
+	server, _ := createServer(cfg, log)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := runServer(ctx, server, server.Addr, log); err != nil {
+		log.WithError(err).Fatal("Server error")
+	}
+}
+
+func createServer(cfg *config.Config, log *logrus.Logger) (*http.Server, *exporter.ValidatorManager) {
 	manager := exporter.NewValidatorManager(cfg, log)
 
 	log.WithFields(logrus.Fields{
@@ -39,46 +54,48 @@ func main() {
 		log.WithField("endpoint", endpoint).Debug("Configured S3 endpoint")
 	}
 
-	// Create HTTP mux
 	mux := http.NewServeMux()
-
-	// Register Prometheus metrics endpoint
 	mux.Handle("/metrics", promhttp.Handler())
-
-	// Register health check endpoint
 	mux.HandleFunc("/health", handlers.NewHealthCheckHandler(manager))
-
-	// Register validation endpoints
-	// POST /validate - validate all endpoints
 	mux.HandleFunc("/validate", handlers.NewValidateAllHandler(manager, log))
-
-	// POST/GET /validate/{endpoint} - validate specific endpoint
 	mux.HandleFunc("/validate/", handlers.NewValidateEndpointHandler(manager, log))
 
-	// Start server
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: mux,
 	}
 
+	return server, manager
+}
+
+func runServer(ctx context.Context, server serverRunner, addr string, log *logrus.Logger) error {
+	errCh := make(chan error, 1)
+
 	go func() {
 		log.WithField("addr", addr).Info("HTTP server listening")
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.WithError(err).Fatal("Server error")
-		}
+		errCh <- server.ListenAndServe()
 	}()
 
-	// Graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+	select {
+	case <-ctx.Done():
+		log.Info("Shutting down server")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+		defer cancel()
 
-	log.Info("Shutting down server")
-	ctx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
-	defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
 
-	if err := server.Shutdown(ctx); err != nil {
-		log.WithError(err).Error("Server shutdown error")
+		err := <-errCh
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return err
 	}
 }

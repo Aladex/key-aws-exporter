@@ -13,8 +13,13 @@ import (
 )
 
 // ValidatorManager manages multiple S3 validators
+type bucketValidator interface {
+	ValidateKeys(ctx context.Context, timeout time.Duration) *s3.ValidationResult
+}
+
+// ValidatorManager manages multiple S3 validators
 type ValidatorManager struct {
-	validators map[string]*s3.S3Validator
+	validators map[string]bucketValidator
 	mu         sync.RWMutex
 	log        *logrus.Logger
 	timeout    time.Duration
@@ -29,7 +34,7 @@ type ValidationResults struct {
 // NewValidatorManager creates a new validator manager
 func NewValidatorManager(cfg *config.Config, log *logrus.Logger) *ValidatorManager {
 	vm := &ValidatorManager{
-		validators: make(map[string]*s3.S3Validator),
+		validators: make(map[string]bucketValidator),
 		log:        log,
 		timeout:    cfg.ValidationTimeout,
 	}
@@ -73,7 +78,7 @@ func (vm *ValidatorManager) ValidateAll(ctx context.Context) *ValidationResults 
 	vm.mu.RLock()
 	for name, validator := range vm.validators {
 		wg.Add(1)
-		go func(endpointName string, v *s3.S3Validator) {
+		go func(endpointName string, v bucketValidator) {
 			defer wg.Done()
 			result := v.ValidateKeys(ctx, vm.timeout)
 			resultsChan <- struct {

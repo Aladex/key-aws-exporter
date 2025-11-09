@@ -9,9 +9,17 @@ import (
 
 	"key-aws-exporter/internal/exporter"
 	"key-aws-exporter/pkg/metrics"
+	"key-aws-exporter/pkg/s3"
 
 	"github.com/sirupsen/logrus"
 )
+
+// Validator abstracts the exporter manager for easier testing
+type Validator interface {
+	GetEndpointCount() int
+	ValidateAll(ctx context.Context) *exporter.ValidationResults
+	ValidateEndpoint(ctx context.Context, endpointName string) *s3.ValidationResult
+}
 
 type ValidationResponse struct {
 	IsValid        bool   `json:"is_valid"`
@@ -21,7 +29,7 @@ type ValidationResponse struct {
 }
 
 type MultiValidationResponse struct {
-	Timestamp time.Time                      `json:"timestamp"`
+	Timestamp time.Time                     `json:"timestamp"`
 	Results   map[string]ValidationResponse `json:"results"`
 	Summary   ValidationSummary             `json:"summary"`
 }
@@ -39,7 +47,7 @@ type HealthResponse struct {
 }
 
 // NewHealthCheckHandler returns a handler for health checks
-func NewHealthCheckHandler(manager *exporter.ValidatorManager) http.HandlerFunc {
+func NewHealthCheckHandler(manager Validator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -59,7 +67,7 @@ func NewHealthCheckHandler(manager *exporter.ValidatorManager) http.HandlerFunc 
 }
 
 // NewValidateAllHandler returns a handler for validating all endpoints
-func NewValidateAllHandler(manager *exporter.ValidatorManager, log *logrus.Logger) http.HandlerFunc {
+func NewValidateAllHandler(manager Validator, log *logrus.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -124,7 +132,7 @@ func NewValidateAllHandler(manager *exporter.ValidatorManager, log *logrus.Logge
 }
 
 // NewValidateEndpointHandler returns a handler for validating a specific endpoint
-func NewValidateEndpointHandler(manager *exporter.ValidatorManager, log *logrus.Logger) http.HandlerFunc {
+func NewValidateEndpointHandler(manager Validator, log *logrus.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost && r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
