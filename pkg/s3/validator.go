@@ -2,13 +2,31 @@ package s3
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	smithy "github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
+)
+
+const (
+	errorTypeUnknown   = "unknown"
+	errorTypeConfig    = "config_error"
+	errorTypeTimeout   = "timeout"
+	errorTypeCanceled  = "canceled"
+	errorTypeNetwork   = "network"
+	errorTypeForbidden = "access_denied"
+	errorTypeNotFound  = "bucket_not_found"
 )
 
 type ValidationResult struct {
@@ -16,14 +34,23 @@ type ValidationResult struct {
 	Message        string
 	CheckedAt      time.Time
 	ResponseTimeMs int64
+	ErrorType      string
+	Duration       time.Duration
 }
 
 type S3Validator struct {
-	endpoint  string
-	region    string
-	bucket    string
-	accessKey string
-	secretKey string
+	endpoint           string
+	region             string
+	bucket             string
+	accessKey          string
+	secretKey          string
+	sessionToken       string
+	usePathStyle       bool
+	insecureSkipVerify bool
+
+	client   s3ListObjectsClient
+	clientMu sync.Mutex
+
 	newClient func(ctx context.Context) (s3ListObjectsClient, error)
 }
 
@@ -32,13 +59,16 @@ type s3ListObjectsClient interface {
 }
 
 // NewS3Validator creates a new S3 validator instance
-func NewS3Validator(endpoint, region, bucket, accessKey, secretKey string) *S3Validator {
+func NewS3Validator(endpoint, region, bucket, accessKey, secretKey, sessionToken string, usePathStyle, insecureSkipVerify bool) *S3Validator {
 	v := &S3Validator{
-		endpoint:  endpoint,
-		region:    region,
-		bucket:    bucket,
-		accessKey: accessKey,
-		secretKey: secretKey,
+		endpoint:           endpoint,
+		region:             region,
+		bucket:             bucket,
+		accessKey:          accessKey,
+		secretKey:          secretKey,
+		sessionToken:       sessionToken,
+		usePathStyle:       usePathStyle,
+		insecureSkipVerify: insecureSkipVerify,
 	}
 	v.newClient = v.defaultClientBuilder
 	return v
@@ -53,17 +83,20 @@ func (v *S3Validator) ValidateKeys(ctx context.Context, timeout time.Duration) *
 
 	start := time.Now()
 	defer func() {
-		result.ResponseTimeMs = time.Since(start).Milliseconds()
+		elapsed := time.Since(start)
+		result.Duration = elapsed
+		result.ResponseTimeMs = elapsed.Milliseconds()
 	}()
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	client, err := v.newClient(ctx)
+	client, err := v.getClient(ctx)
 	if err != nil {
 		result.IsValid = false
-		result.Message = fmt.Sprintf("Failed to create AWS config: %v", err)
+		result.Message = fmt.Sprintf("Failed to create AWS client: %v", err)
+		result.ErrorType = errorTypeConfig
 		return result
 	}
 
@@ -77,11 +110,13 @@ func (v *S3Validator) ValidateKeys(ctx context.Context, timeout time.Duration) *
 	if err != nil {
 		result.IsValid = false
 		result.Message = fmt.Sprintf("S3 validation failed: %v", err)
+		result.ErrorType = classifyValidationError(err)
 		return result
 	}
 
 	result.IsValid = true
 	result.Message = "AWS credentials are valid"
+	result.ErrorType = ""
 	return result
 }
 
@@ -92,15 +127,27 @@ func (v *S3Validator) HealthCheck(ctx context.Context, timeout time.Duration) bo
 }
 
 func (v *S3Validator) defaultClientBuilder(ctx context.Context) (s3ListObjectsClient, error) {
-	// Create S3 config
-	cfg, err := config.LoadDefaultConfig(ctx,
+	loadOptions := []func(*config.LoadOptions) error{
 		config.WithRegion(v.region),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			v.accessKey,
 			v.secretKey,
-			"", // session token (optional)
+			v.sessionToken,
 		)),
-	)
+	}
+
+	var insecureTransport *http.Client
+	if v.insecureSkipVerify {
+		insecureTransport = &http.Client{
+			Transport: &http.Transport{
+				Proxy:           http.ProxyFromEnvironment,
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // intentional for MinIO/self-signed setups
+			},
+		}
+		loadOptions = append(loadOptions, config.WithHTTPClient(insecureTransport))
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, loadOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,5 +157,83 @@ func (v *S3Validator) defaultClientBuilder(ctx context.Context) (s3ListObjectsCl
 		cfg.BaseEndpoint = aws.String(v.endpoint)
 	}
 
-	return s3.NewFromConfig(cfg), nil
+	return s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.UsePathStyle = v.usePathStyle
+		if v.endpoint != "" {
+			o.BaseEndpoint = aws.String(v.endpoint)
+		}
+		if v.insecureSkipVerify && insecureTransport != nil {
+			o.HTTPClient = insecureTransport
+		}
+	}), nil
+}
+
+func (v *S3Validator) getClient(ctx context.Context) (s3ListObjectsClient, error) {
+	v.clientMu.Lock()
+	defer v.clientMu.Unlock()
+
+	if v.client != nil {
+		return v.client, nil
+	}
+
+	client, err := v.newClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	v.client = client
+	return client, nil
+}
+
+func classifyValidationError(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return errorTypeTimeout
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return errorTypeCanceled
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return errorTypeTimeout
+		}
+		return errorTypeNetwork
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		code := strings.ToLower(apiErr.ErrorCode())
+		switch code {
+		case "accessdenied", "invalidaccesskeyid", "signaturedoesnotmatch":
+			return errorTypeForbidden
+		case "nosuchbucket", "nosuchbucketpolicy":
+			return errorTypeNotFound
+		case "expiredtoken":
+			return "token_expired"
+		case "slowdown", "throttling", "throttlingexception":
+			return "throttled"
+		case "requesttimeout":
+			return errorTypeTimeout
+		}
+	}
+
+	var respErr *smithyhttp.ResponseError
+	if errors.As(err, &respErr) {
+		switch respErr.HTTPStatusCode() {
+		case http.StatusForbidden:
+			return errorTypeForbidden
+		case http.StatusNotFound:
+			return errorTypeNotFound
+		case http.StatusGatewayTimeout:
+			return errorTypeTimeout
+		}
+	}
+
+	return errorTypeUnknown
 }

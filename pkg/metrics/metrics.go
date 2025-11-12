@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -112,6 +114,14 @@ func RecordResponseTime(bucket, operation string, milliseconds float64) {
 	ResponseTime.WithLabelValues(bucket, operation).Observe(milliseconds)
 }
 
+// RecordValidationDuration captures how long a validation took in seconds.
+func RecordValidationDuration(bucket string, duration time.Duration) {
+	if duration <= 0 {
+		return
+	}
+	ValidationDuration.WithLabelValues(bucket).Observe(duration.Seconds())
+}
+
 // RegisterEndpoint seeds metrics for a bucket so they are visible before validation occurs
 func RegisterEndpoint(bucket string) {
 	EndpointConfigured.WithLabelValues(bucket).Set(1)
@@ -120,5 +130,5 @@ func RegisterEndpoint(bucket string) {
 	ValidationAttempts.WithLabelValues(bucket, "success").Add(0)
 	ValidationAttempts.WithLabelValues(bucket, "failure").Add(0)
 	ValidationSuccess.WithLabelValues(bucket).Add(0)
-	ValidationFailures.WithLabelValues(bucket, "validation_failed").Add(0)
+	ValidationFailures.WithLabelValues(bucket, "unknown").Add(0)
 }

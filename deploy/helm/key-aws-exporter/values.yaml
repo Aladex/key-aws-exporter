@@ -51,7 +51,7 @@ affinity: {}
 # Extra environment variables for the exporter
 # Provide either S3_ENDPOINTS_JSON or legacy env vars via this map or via existingSecret
 env:
-  AUTO_VALIDATE_INTERVAL: "30s"
+  AUTO_VALIDATE_INTERVAL: "0s"
   EXPORTER_PORT: "8080"
 
 extraEnv: []

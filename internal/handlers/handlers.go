@@ -25,6 +25,7 @@ type ValidationResponse struct {
 	Message        string `json:"message"`
 	CheckedAt      string `json:"checked_at"`
 	ResponseTimeMs int64  `json:"response_time_ms"`
+	ErrorType      string `json:"error_type,omitempty"`
 }
 
 type MultiValidationResponse struct {
@@ -73,7 +74,7 @@ func NewValidateAllHandler(manager Validator, log *logrus.Logger) http.HandlerFu
 			return
 		}
 
-		ctx := context.Background()
+		ctx := r.Context()
 		results := manager.ValidateAll(ctx)
 
 		// Build response
@@ -92,6 +93,7 @@ func NewValidateAllHandler(manager Validator, log *logrus.Logger) http.HandlerFu
 				Message:        result.Message,
 				CheckedAt:      result.CheckedAt.UTC().Format(time.RFC3339),
 				ResponseTimeMs: result.ResponseTimeMs,
+				ErrorType:      result.ErrorType,
 			}
 
 			exporter.RecordResult(log, endpointName, result)
@@ -139,7 +141,7 @@ func NewValidateEndpointHandler(manager Validator, log *logrus.Logger) http.Hand
 			return
 		}
 
-		ctx := context.Background()
+		ctx := r.Context()
 		result := manager.ValidateEndpoint(ctx, endpointName)
 
 		exporter.RecordResult(log, endpointName, result)
@@ -149,6 +151,7 @@ func NewValidateEndpointHandler(manager Validator, log *logrus.Logger) http.Hand
 			Message:        result.Message,
 			CheckedAt:      result.CheckedAt.UTC().Format(time.RFC3339),
 			ResponseTimeMs: result.ResponseTimeMs,
+			ErrorType:      result.ErrorType,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

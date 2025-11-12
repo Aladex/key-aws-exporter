@@ -18,8 +18,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o exporter ./cmd/ex
 # Final stage
 FROM alpine:latest
 
-# Add ca-certificates for HTTPS
-RUN apk --no-cache add ca-certificates
+# Add ca-certificates and wget for HTTPS and health checks
+RUN apk --no-cache add ca-certificates wget
 
 # Create non-root user
 RUN addgroup -g 1000 exporter && \
@@ -41,7 +41,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+    CMD wget -q --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Run the exporter
 CMD ["./exporter"]

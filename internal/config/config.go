@@ -21,12 +21,15 @@ const (
 
 // S3EndpointConfig represents configuration for a single S3 endpoint
 type S3EndpointConfig struct {
-	Name      string `json:"name"`
-	Endpoint  string `json:"endpoint"`
-	Region    string `json:"region"`
-	Bucket    string `json:"bucket"`
-	AccessKey string `json:"access_key"`
-	SecretKey string `json:"secret_key"`
+	Name               string `json:"name"`
+	Endpoint           string `json:"endpoint"`
+	Region             string `json:"region"`
+	Bucket             string `json:"bucket"`
+	AccessKey          string `json:"access_key"`
+	SecretKey          string `json:"secret_key"`
+	SessionToken       string `json:"session_token"`
+	UsePathStyle       bool   `json:"use_path_style"`
+	InsecureSkipVerify bool   `json:"insecure_skip_verify"`
 }
 
 type Config struct {
@@ -82,11 +85,14 @@ func LoadConfig() (*Config, error) {
 
 	// Fall back to legacy single endpoint configuration
 	singleEndpoint := S3EndpointConfig{
-		Endpoint:  getEnv("S3_ENDPOINT", ""),
-		Region:    getEnv("S3_REGION", DefaultS3Region),
-		Bucket:    getEnv("S3_BUCKET", ""),
-		AccessKey: getEnv("S3_ACCESS_KEY", ""),
-		SecretKey: getEnv("S3_SECRET_KEY", ""),
+		Endpoint:           getEnv("S3_ENDPOINT", ""),
+		Region:             getEnv("S3_REGION", DefaultS3Region),
+		Bucket:             getEnv("S3_BUCKET", ""),
+		AccessKey:          getEnv("S3_ACCESS_KEY", ""),
+		SecretKey:          getEnv("S3_SECRET_KEY", ""),
+		SessionToken:       getEnv("S3_SESSION_TOKEN", ""),
+		UsePathStyle:       getEnvBool("S3_USE_PATH_STYLE", false),
+		InsecureSkipVerify: getEnvBool("S3_INSECURE_SKIP_VERIFY", false),
 	}
 
 	// Validate required fields for legacy mode
@@ -153,6 +159,18 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 			return defaultValue
 		}
 		return duration
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if value, exists := os.LookupEnv(key); exists {
+		switch value {
+		case "1", "true", "TRUE", "True", "yes", "YES", "Yes":
+			return true
+		case "0", "false", "FALSE", "False", "no", "NO", "No":
+			return false
+		}
 	}
 	return defaultValue
 }

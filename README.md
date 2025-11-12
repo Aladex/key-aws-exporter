@@ -73,9 +73,14 @@ export S3_REGION=us-east-1
 | `S3_SECRET_KEY` | Yes | - | AWS Secret Access Key |
 | `S3_REGION` | No | us-east-1 | AWS region |
 | `S3_ENDPOINT` | No | - | Custom S3 endpoint |
+| `S3_SESSION_TOKEN` | No | - | Temporary AWS session token (STS/assumed roles) |
+| `S3_USE_PATH_STYLE` | No | false | Force path-style requests (helps with MinIO/legacy endpoints) |
+| `S3_INSECURE_SKIP_VERIFY` | No | false | Skip TLS verification (use only for trusted labs/self-signed setups) |
 | `EXPORTER_PORT` | No | 8080 | HTTP server port |
 | `VALIDATION_TIMEOUT` | No | 10s | Timeout for validation |
 | `AUTO_VALIDATE_INTERVAL` | No | 0s (disabled) | How often to run background validations automatically |
+
+> Helm chart inherits the same `AUTO_VALIDATE_INTERVAL=0s` default; set `env.AUTO_VALIDATE_INTERVAL` there if you want periodic checks.
 
 ### 2. Multiple Endpoints (JSON Config)
 
@@ -121,6 +126,9 @@ export AUTO_VALIDATE_INTERVAL=30s
 - `secret_key` - AWS Secret Access Key (required)
 - `region` - AWS region (optional, defaults to us-east-1)
 - `endpoint` - Custom endpoint URL (optional, for MinIO etc.)
+- `session_token` - Temporary AWS session token if you rely on STS (optional)
+- `use_path_style` - Boolean flag to force path-style requests (useful for MinIO)
+- `insecure_skip_verify` - Boolean flag to skip TLS verification for custom/self-signed endpoints
 
 ## API Endpoints
 

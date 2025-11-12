@@ -48,6 +48,9 @@ func NewValidatorManager(cfg *config.Config, log *logrus.Logger) *ValidatorManag
 			endpointCfg.Bucket,
 			endpointCfg.AccessKey,
 			endpointCfg.SecretKey,
+			endpointCfg.SessionToken,
+			endpointCfg.UsePathStyle,
+			endpointCfg.InsecureSkipVerify,
 		)
 		vm.validators[endpointCfg.Name] = validator
 		metrics.RegisterEndpoint(endpointCfg.Name)
@@ -112,6 +115,7 @@ func (vm *ValidatorManager) ValidateEndpoint(ctx context.Context, endpointName s
 			IsValid:   false,
 			Message:   fmt.Sprintf("endpoint '%s' not found", endpointName),
 			CheckedAt: time.Now(),
+			ErrorType: "endpoint_not_found",
 		}
 	}
 
@@ -139,9 +143,14 @@ func (vm *ValidatorManager) GetEndpointCount() int {
 
 // RecordResult updates metrics and logs for a validation outcome
 func RecordResult(log *logrus.Logger, endpointName string, result *s3.ValidationResult) {
+	if result == nil {
+		return
+	}
+
 	metrics.RecordValidationAttempt(endpointName, result.IsValid)
 	metrics.SetLastValidationTime(endpointName, float64(result.CheckedAt.Unix()))
 	metrics.RecordResponseTime(endpointName, "ListObjectsV2", float64(result.ResponseTimeMs))
+	metrics.RecordValidationDuration(endpointName, result.Duration)
 
 	if result.IsValid {
 		metrics.RecordValidationSuccess(endpointName)
@@ -152,11 +161,16 @@ func RecordResult(log *logrus.Logger, endpointName string, result *s3.Validation
 			}).Info("S3 key validation successful")
 		}
 	} else {
-		metrics.RecordValidationFailure(endpointName, "validation_failed")
+		errorType := result.ErrorType
+		if errorType == "" {
+			errorType = "unknown"
+		}
+		metrics.RecordValidationFailure(endpointName, errorType)
 		if log != nil {
 			log.WithFields(logrus.Fields{
 				"endpoint": endpointName,
 				"message":  result.Message,
+				"error":    errorType,
 			}).Warn("S3 key validation failed")
 		}
 	}

@@ -26,6 +26,13 @@ type validationRunner interface {
 	ValidateAll(ctx context.Context) *exporter.ValidationResults
 }
 
+const (
+	httpReadTimeout       = 15 * time.Second
+	httpReadHeaderTimeout = 10 * time.Second
+	httpWriteTimeout      = 20 * time.Second
+	httpIdleTimeout       = 60 * time.Second
+)
+
 func main() {
 	log := logrus.New()
 	log.SetLevel(logrus.InfoLevel)
@@ -69,8 +76,12 @@ func createServer(cfg *config.Config, log *logrus.Logger) (*http.Server, *export
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadTimeout:       httpReadTimeout,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		WriteTimeout:      httpWriteTimeout,
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	return server, manager
