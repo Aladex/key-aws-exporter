@@ -16,7 +16,7 @@ type mockS3Client struct {
 	called bool
 }
 
-func (m *mockS3Client) ListObjectsV2(ctx context.Context, input *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+func (m *mockS3Client) ListObjectsV2(_ context.Context, _ *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	m.called = true
 	if m.err != nil {
 		return nil, m.err
@@ -391,19 +391,3 @@ func (m *mockAPIError) ErrorFault() smithy.ErrorFault {
 }
 
 var _ smithy.APIError = (*mockAPIError)(nil)
-
-type mockResponseError struct {
-	statusCode int
-}
-
-func (m *mockResponseError) Error() string {
-	return "Response Error"
-}
-
-func (m *mockResponseError) HTTPStatusCode() int {
-	return m.statusCode
-}
-
-func (m *mockResponseError) ServiceRequestID() string {
-	return "test-request-id"
-}
