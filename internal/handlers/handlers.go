@@ -62,7 +62,9 @@ func NewHealthCheckHandler(manager Validator) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			logrus.Errorf("Failed to encode health response: %v", err)
+		}
 	}
 }
 
@@ -115,7 +117,9 @@ func NewValidateAllHandler(manager Validator, log *logrus.Logger) http.HandlerFu
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Errorf("Failed to encode validate all response: %v", err)
+		}
 	}
 }
 
@@ -161,6 +165,8 @@ func NewValidateEndpointHandler(manager Validator, log *logrus.Logger) http.Hand
 		}
 		w.WriteHeader(statusCode)
 
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Errorf("Failed to encode validate endpoint response: %v", err)
+		}
 	}
 }
